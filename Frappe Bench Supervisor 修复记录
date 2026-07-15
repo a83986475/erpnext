@@ -1,0 +1,154 @@
+# Frappe Bench Supervisor 修复记录
+
+## 问题现象
+
+执行 `bench restart` 或 `supervisorctl status` 时，最初出现以下问题：
+
+- `supervisor` 服务已启动，但没有加载到 Frappe 的进程组。
+- `supervisorctl` 中看不到 `frappe-bench` 相关进程。
+- `/etc/supervisor/conf.d/` 目录为空。
+- `supervisorctl status` 报 `no such group` 或类似错误。
+
+---
+
+## 排查结果
+
+### 1. supervisor 服务本身正常
+执行：
+
+```bash
+sudo systemctl status supervisor
+```
+
+结果显示：
+
+- `supervisor.service` 为 `active (running)`
+- `supervisord` 已成功启动
+
+这说明问题不在 supervisor 服务本身，而在配置加载阶段。
+
+### 2. bench 已生成 supervisor 配置
+执行：
+
+```bash
+ls -l ~/frappe-bench/config/supervisor.conf
+```
+
+确认存在：
+
+```bash
+~/frappe-bench/config/supervisor.conf
+```
+
+说明 bench 已经生成了 supervisor 配置文件。
+
+### 3. supervisor 配置目录为空
+执行：
+
+```bash
+ls -l /etc/supervisor/conf.d/
+```
+
+结果为空，说明 supervisor 没有读取到 bench 生成的配置。
+
+---
+
+## 修复过程
+
+### 1. 连接 supervisor 配置文件
+在 bench 目录执行：
+
+```bash
+cd ~/frappe-bench
+sudo ln -s $(pwd)/config/supervisor.conf /etc/supervisor/conf.d/frappe-bench.conf
+```
+
+### 2. 让 supervisor 重新加载配置
+执行：
+
+```bash
+sudo supervisorctl reread
+sudo supervisorctl update
+```
+
+### 3. 检查状态
+执行：
+
+```bash
+sudo supervisorctl status
+```
+
+结果显示以下进程组被识别并启动：
+
+- `frappe-bench-redis`
+- `frappe-bench-web`
+- `frappe-bench-workers`
+
+随后各进程进入 `RUNNING` 状态。
+
+---
+
+## 当前状态
+
+目前 supervisor 下的进程均已正常运行：
+
+- `frappe-bench-redis-cache` → `RUNNING`
+- `frappe-bench-redis-queue` → `RUNNING`
+- `frappe-bench-frappe-web` → `RUNNING`
+- `frappe-bench-node-socketio` → `RUNNING`
+- `frappe-bench-frappe-long-worker-0` → `RUNNING`
+- `frappe-bench-frappe-schedule` → `RUNNING`
+- `frappe-bench-frappe-short-worker-0` → `RUNNING`
+
+---
+
+## 说明
+
+终端中出现的这条警告：
+
+```bash
+pkg_resources is deprecated as an API
+```
+
+属于 Python 依赖弃用警告，不影响当前 supervisor 和 bench 进程正常运行，可以先忽略。
+
+---
+
+## 后续建议
+
+### 1. 检查 nginx
+确认 nginx 配置已链接并正常：
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### 2. 检查站点状态
+执行：
+
+```bash
+bench --site <你的站点名> doctor
+```
+
+### 3. 关闭维护模式
+如果站点处于维护状态，执行：
+
+```bash
+bench --site <你的站点名> set-maintenance-mode off
+```
+
+---
+
+## 最终结论
+
+本次问题的根因是：
+
+**bench 已生成 supervisor 配置，但没有放入 `/etc/supervisor/conf.d/`，导致 supervisor 没有加载 Frappe 进程组。**
+
+修复方式是：
+
+1. 连接 `config/supervisor.conf`
+2. 执行 `supervisorctl reread`
+3. 执行 `supervisorctl update`
+4. 确认所有进程进入 `RUNNING`
