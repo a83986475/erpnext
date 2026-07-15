@@ -1,0 +1,64 @@
+# ERPNext v16 从零安装命令
+
+## 1) 更新系统
+sudo apt update && sudo apt upgrade -y
+
+## 2) 安装基础依赖
+sudo apt install -y \
+git curl wget gnupg ca-certificates \
+redis-server mariadb-server mariadb-client \
+build-essential pkg-config \
+python3 python3-pip python3-venv python3-dev \
+libffi-dev libssl-dev \
+libjpeg-dev zlib1g-dev liblcms2-dev libblas-dev liblapack-dev \
+wkhtmltopdf
+
+## 3) 安装 Node.js 20 和 Yarn
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+sudo npm install -g yarn
+
+## 4) 安装 Bench
+python3 -m pip install --upgrade pip
+python3 -m pip install frappe-bench
+
+## 5) 创建 bench
+bench init frappe-bench --frappe-branch version-16
+cd frappe-bench
+
+## 6) 获取 ERPNext
+bench get-app erpnext --branch version-16
+
+## 7) 创建站点
+bench new-site erp.solua.one
+
+## 8) 把 ERPNext 安装到站点
+bench --site erp.solua.one install-app erpnext
+
+## 9) 执行迁移
+bench --site erp.solua.one migrate
+
+## 10) 启用 scheduler
+bench --site erp.solua.one enable-scheduler
+
+## 11) 关闭维护模式
+bench --site erp.solua.one set-maintenance-mode off
+
+## 12) 检查站点已安装应用
+bench --site erp.solua.one list-apps
+
+## 13) 准备生产配置
+bench setup supervisor
+bench setup nginx
+
+## 14) 链接配置文件
+sudo ln -s $(pwd)/config/supervisor.conf /etc/supervisor/conf.d/frappe-bench.conf
+sudo ln -s $(pwd)/config/nginx.conf /etc/nginx/conf.d/frappe-bench.conf
+
+## 15) 重载服务
+sudo supervisorctl reread
+sudo supervisorctl update
+sudo systemctl restart nginx
+
+## 16) 检查状态
+sudo supervisorctl status
